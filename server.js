@@ -158,20 +158,28 @@ async function sendDoctorMessage(doctor, data, requestId) {
     `Date: ${data.appointment}\n\n` +
     "Reply:\n1️⃣ Accept\n2️⃣ Decline";
 
-  await axios.post(
-    `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: doctor.doctorPhone,
-      text: { body: message }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${ACCESS_TOKEN}`,
-        "Content-Type": "application/json",
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: doctor.doctorPhone,
+        text: { body: message }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        }
       }
-    }
-  );
+    );
+
+    console.log("Doctor message sent:", response.data);
+
+  } catch (error) {
+    console.log("❌ WhatsApp Error:");
+    console.log(error.response?.data || error.message);
+  }
 }
 async function handleDoctorResponse(phone, response) {
 
