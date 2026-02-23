@@ -5,9 +5,9 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const VERIFY_TOKEN = "venky_bot_token";
-const ACCESS_TOKEN = "EAAtZA1FmKgpcBQZC0ZBYVSCeHpOVHXttdZBoIxFXxdU9mKdKM9YZCP2IKuUvtOVWAXpIzS4RbuYVJUWazZAF41ZCYICbSLzBnhqZB3ZBqXCXk2aZCOmArOsTzQIZCfXove5Gr6ZB18ufz4quAz9xV4JZBt4VU1qRZCFuRViLM8SJJePP8noJgywVTtxQHWeN3btNMZAe6cZBijE4lcqAjfYljTWoiYbUyhSAYHvGF3wBbfrGdzpXgzUmGQ5rvIbj6jVZCfex2FneM4rmCNT3eTciv5yjvTNVpupek";
-const PHONE_NUMBER_ID = "977597622109820";
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
 // 🔹 Webhook verification
 app.get("/webhook", (req, res) => {
