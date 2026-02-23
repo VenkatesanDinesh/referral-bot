@@ -26,8 +26,7 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", async (req, res) => {
   const body = req.body;
 
-  const message =
-    body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
   if (message) {
     const from = message.from;
@@ -35,13 +34,27 @@ app.post("/webhook", async (req, res) => {
 
     console.log("Incoming:", from, text);
 
-    // 🔥 Reply back
+    let reply = "";
+
+    if (!text) {
+      reply = "Please send a valid message.";
+    } 
+    else if (text.toLowerCase().includes("hi")) {
+      reply = "Welcome to Donto Referral Service 👨‍⚕️\n\n1️⃣ Raise New Case\n2️⃣ Check Status";
+    } 
+    else if (text === "1") {
+      reply = "Please enter:\n• Patient Age\n• Problem Type\n• Urgency\n• Location";
+    } 
+    else {
+      reply = "I didn't understand. Please type 1 or 2.";
+    }
+
     await axios.post(
-      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         to: from,
-        text: { body: "Hello from Donto Bot 👨‍⚕️" },
+        text: { body: reply },
       },
       {
         headers: {
