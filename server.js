@@ -78,7 +78,35 @@ app.get("/webhook", (req, res) => {
 
 async function saveToGoogleSheet(data) {
   const primaryKey = uuidv4();
+   // ✅ Step 1: Check if header exists
+  const checkHeader = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "Sheet1!A1:K1",
+  });
 
+  if (!checkHeader.data.values || checkHeader.data.values.length === 0) {
+    // ✅ Step 2: Create Header Row
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: "Sheet1!A1",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[
+          "PrimaryKey",
+          "AppointmentDateTime",
+          "ClinicPhone",
+          "Private",
+          "Specialists",
+          "Procedures",
+          "PatientName",
+          "MedicalHistory",
+          "DoctorName",
+          "DoctorPhone",
+          "Status"
+        ]]
+      }
+    });
+  }
   const values = [[
     primaryKey,
     new Date().toISOString(),
@@ -159,22 +187,68 @@ if (text?.toLowerCase() === "cancel") {
       break;
 
     case "main_menu":
-      if (text === "1") {
-        reply = "📅 Enter Appointment Date & Time (YYYY-MM-DD HH:MM)";
-        user.step = "appointment";
-      } else {
-        reply = "Session closed.";
-        delete sessions[from];
-      }
-      break;
+  if (text === "1") {
+    reply =
+      "📅 Select Appointment Date:\n\n" +
+      "1️⃣ Today\n" +
+      "2️⃣ Tomorrow\n" +
+      "3️⃣ Day After Tomorrow\n\n" +
+      "Reply with number.";
+    user.step = "appointment_date";
+  } else {
+    reply = "Session closed.";
+    delete sessions[from];
+  }
+  break;
 
     // ---------------- APPOINTMENT ----------------
-    case "appointment":
-      user.data.appointment = text;
-      reply = "🔐 Private Request?\n1️⃣ Yes\n2️⃣ No";
-      user.step = "private";
-      break;
+    case "appointment_date":
+  const today = new Date();
+  let selectedDate;
 
+  if (text === "1") {
+    selectedDate = today;
+  } else if (text === "2") {
+    selectedDate = new Date();
+    selectedDate.setDate(today.getDate() + 1);
+  } else if (text === "3") {
+    selectedDate = new Date();
+    selectedDate.setDate(today.getDate() + 2);
+  } else {
+    reply = "❌ Invalid option. Please select 1, 2, or 3.";
+    break;
+  }
+
+  user.data.date = selectedDate.toISOString().split("T")[0];
+
+  reply =
+    "⏰ Select Time Slot:\n\n" +
+    "1️⃣ 09:00 AM\n" +
+    "2️⃣ 11:00 AM\n" +
+    "3️⃣ 02:00 PM\n" +
+    "4️⃣ 04:00 PM\n\n" +
+    "Reply with number.";
+
+  user.step = "appointment_time";
+  break;
+  case "appointment_time":
+  let selectedTime = "";
+
+  if (text === "1") selectedTime = "09:00";
+  else if (text === "2") selectedTime = "11:00";
+  else if (text === "3") selectedTime = "14:00";
+  else if (text === "4") selectedTime = "16:00";
+  else {
+    reply = "❌ Invalid option. Please select 1-4.";
+    break;
+  }
+
+  user.data.appointment = `${user.data.date} ${selectedTime}`;
+
+  reply = "🔐 Private Request?\n1️⃣ Yes\n2️⃣ No";
+  user.step = "private";
+  break;
+    
     case "private":
       user.data.isPrivate = text === "1";
       reply = "Select Specialist(s)\n(You can send multiple numbers separated by comma)\n\n";
