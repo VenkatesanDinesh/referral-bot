@@ -1,7 +1,19 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
+const { google } = require("googleapis");
+const { v4: uuidv4 } = require("uuid");
 
+// 🔐 Google Auth (Render Safe)
+const auth = new google.auth.GoogleAuth({
+  credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+const sheets = google.sheets({ version: "v4", auth });
+
+// 📄 Sheet ID from Render env
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const app = express();
 app.use(express.json());
 
@@ -60,7 +72,37 @@ app.get("/webhook", (req, res) => {
     res.sendStatus(403);
   }
 });
+// -----------------------------
+// SAVE TO GOOGLE SHEET
+// -----------------------------
 
+async function saveToGoogleSheet(data) {
+  const primaryKey = uuidv4();
+
+  const values = [[
+    primaryKey,
+    new Date().toISOString(),
+    data.clinicPhone,
+    data.appointment,
+    data.isPrivate ? "Yes" : "No",
+    data.specialists.join(", "),
+    data.procedures.join(", "),
+    data.patientName,
+    data.medical,
+    "", // Doctor Name (future)
+    "", // Doctor Phone (future)
+    "NEW"
+  ]];
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "Sheet1!A1",
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values },
+  });
+
+  return primaryKey;
+}
 // -----------------------------
 // MAIN FLOW
 // -----------------------------
@@ -74,6 +116,29 @@ app.post("/webhook", async (req, res) => {
   const from = message.from;
   const text = message.text?.body?.trim();
 
+// -----------------------------
+// GLOBAL CANCEL / STOP
+// -----------------------------
+if (text?.toLowerCase() === "cancel") {
+  delete sessions[from];
+
+  await axios.post(
+    `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: from,
+      text: { body: "❌ Session cancelled. Type HI to start again." },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  return res.sendStatus(200);
+}
   if (!sessions[from]) {
     sessions[from] = { step: "start", data: {} };
   }
@@ -198,6 +263,15 @@ app.post("/webhook", async (req, res) => {
     // ---------------- TERMS ----------------
     case "terms":
       if (text === "1") {
+         const requestId = await saveToGoogleSheet({
+      clinicPhone: from,
+      appointment: user.data.appointment,
+      isPrivate: user.data.isPrivate,
+      specialists: user.data.specialists,
+      procedures: user.data.procedures,
+      patientName: user.data.patientName,
+      medical: user.data.medical
+    });
         reply =
           "✅ Request Submitted Successfully!\n\n" +
           "Summary:\n" +
