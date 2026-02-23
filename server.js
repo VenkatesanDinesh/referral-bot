@@ -40,20 +40,75 @@ const specialistOptions = [
 const procedurePlanOptions = {
   Prosthodontist: [
     "Tooth Preparation",
-    "Inlay/Onlay",
+    "Inlay/ Onlay / overlay-Endo Crown",
     "Veneers",
-    "Complete Dentures"
+    "Crown removal",
+    "Provisional/ Temporary Crown",
+    "Complete dentures",
+    "Tooth/Implant supported overdenture",
+    "Flexi Dentures",
+    "Cast partials",
+    "Post & Core",
+    "Precision attachment unilateral",
+    "Precision attachment bilateral",
+    "Implant rehabilitation- (single/multiple)",
+    "Maxillofacial prosthesis",
   ],
   Endodontist: [
-    "Consultation",
-    "Anterior RCT",
-    "Posterior RCT",
-    "Re-RCT"
+    "Consult.",
+    "Ant. RCT.",
+    "Post. RCT",
+    "ReRCT",
+    "Instrument Retrieval",
+    "Fiber Post/Cast Post",
+    "Bonded Pestoration",
+  ],
+  "Restorative Dentist": [
+    "Consult.",
+    "Composite smile Makeover.",
+    "Veneers Smile Makeover",
+    "Diastema Closure Comp/Ceramic",
+    "Class 2 Restoration",
+    "Deep Carries Management",
+    "Fluoride Application",
+    "Class 3/4 Restoration",
+    "E-max Bonded restoration",
+    "Anterior composite",
+    "Vital bleaching",
+    "Non vital bleaching"
+  ],
+  Pedodontist: [
+    "Pulpotomy/Pulpectomy.",
+    "SSC.",
+    "Zirconia crown",
+    "Extraction",
+    "Habit breaking appliance",
+    "Strip crowns",
+  ],
+  Periodontist: [
+    "Sinus lift direct/indirect.",
+    "Implant site development.",
+    "Soft/hard tissue grafting",
+    "Flap surgery",
+    "Frenectomy laser/scapel",
+    "Recession coverage",
+    "Gingival depigmentation",
+  ],
+  "Oral Surgery": [
+    "Disimpaction surgery.",
+    "Extraction.",
+    "Biopsy",
+    "Major cyst nucleation",
+    "Implants: conventional/ Basal/ pterygoid implants",
   ],
   Implantologist: [
-    "Implant Placement",
-    "Sinus Lift",
-    "All on 4 Surgery"
+    "Implant placement and restoration",
+    "Sinus lift direct/indirect",
+    "Soft tissue grafting",
+    "Hard tissue grafting",
+    "All on 4 surgery",
+    "All on 4 prosthesis",
+    "Zygoma implants",
   ]
 };
 
@@ -72,54 +127,131 @@ app.get("/webhook", (req, res) => {
     res.sendStatus(403);
   }
 });
+
+async function getAvailableDoctor(specialist) {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "DoctorDetails!A2:F100",
+  });
+
+  const rows = response.data.values;
+  if (!rows) return null;
+
+  const filtered = rows
+    .filter(r => r[3] === specialist && r[4] === "Yes")
+    .sort((a, b) => parseInt(a[5] || 0) - parseInt(b[5] || 0));
+
+  if (filtered.length === 0) return null;
+
+  return {
+    doctorId: filtered[0][0],
+    doctorName: filtered[0][1],
+    doctorPhone: filtered[0][2],
+    rowIndex: rows.indexOf(filtered[0]) + 2
+  };
+}
+async function sendDoctorMessage(doctor, data, requestId) {
+  const message =
+    "🆕 *New Case Assigned*\n\n" +
+    `Request ID: ${requestId}\n` +
+    `Patient: ${data.patientName}\n` +
+    `Date: ${data.appointment}\n\n` +
+    "Reply:\n1️⃣ Accept\n2️⃣ Decline";
+
+  await axios.post(
+    `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: doctor.doctorPhone,
+      text: { body: message }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      }
+    }
+  );
+}
+async function handleDoctorResponse(phone, response) {
+
+  const sheet = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "Sheet1!A2:K100",
+  });
+
+  const rows = sheet.data.values;
+  if (!rows) return false;
+
+  for (let i = 0; i < rows.length; i++) {
+
+    const doctorPhone = rows[i][9];
+    const status = rows[i][10];
+
+    if (doctorPhone === phone && status === "ASSIGNED") {
+
+      const newStatus = response === "1" ? "ACCEPTED" : "DECLINED";
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `Sheet1!K${i + 2}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[newStatus]] },
+      });
+
+      // Optional: Notify doctor
+      await axios.post(
+        `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`,
+        {
+          messaging_product: "whatsapp",
+          to: phone,
+          text: { body: `✅ Case ${newStatus}` }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          }
+        }
+      );
+
+      return true; // important
+    }
+  }
+
+  return false; // not a doctor case
+}
 // -----------------------------
 // SAVE TO GOOGLE SHEET
 // -----------------------------
-
 async function saveToGoogleSheet(data) {
   const primaryKey = uuidv4();
-   // ✅ Step 1: Check if header exists
-  const checkHeader = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: "Sheet1!A1:K1",
-  });
 
-  if (!checkHeader.data.values || checkHeader.data.values.length === 0) {
-    // ✅ Step 2: Create Header Row
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: "Sheet1!A1",
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [[
-          "PrimaryKey",
-          "AppointmentDateTime",
-          "ClinicPhone",
-          "Private",
-          "Specialists",
-          "Procedures",
-          "PatientName",
-          "MedicalHistory",
-          "DoctorName",
-          "DoctorPhone",
-          "Status"
-        ]]
-      }
-    });
+  // 🔹 Get doctor based on first specialist
+  const assignedDoctor = await getAvailableDoctor(data.specialists[0]);
+
+  let doctorName = "";
+  let doctorPhone = "";
+  let status = "PENDING";
+
+  if (assignedDoctor) {
+    doctorName = assignedDoctor.doctorName;
+    doctorPhone = assignedDoctor.doctorPhone;
+    status = "ASSIGNED";
   }
+
   const values = [[
     primaryKey,
-    new Date().toISOString(),
-    data.clinicPhone,
     data.appointment,
+    data.clinicPhone,
     data.isPrivate ? "Yes" : "No",
     data.specialists.join(", "),
     data.procedures.join(", "),
     data.patientName,
     data.medical,
-    "", // Doctor Name (future)
-    "", // Doctor Phone (future)
-    "NEW"
+    doctorName,
+    doctorPhone,
+    status
   ]];
 
   await sheets.spreadsheets.values.append({
@@ -128,6 +260,11 @@ async function saveToGoogleSheet(data) {
     valueInputOption: "USER_ENTERED",
     requestBody: { values },
   });
+
+  // 🔹 Send WhatsApp to doctor
+  if (assignedDoctor) {
+    await sendDoctorMessage(assignedDoctor, data, primaryKey);
+  }
 
   return primaryKey;
 }
@@ -143,7 +280,17 @@ app.post("/webhook", async (req, res) => {
 
   const from = message.from;
   const text = message.text?.body?.trim();
+// ------------------------------------
+// Doctor Accept / Decline Handling
+// ------------------------------------
+if (text === "1" || text === "2") {
 
+  const handled = await handleDoctorResponse(from, text);
+
+  if (handled) {
+    return res.sendStatus(200); // stop clinic flow
+  }
+}
 // -----------------------------
 // GLOBAL CANCEL / STOP
 // -----------------------------
